@@ -8,11 +8,6 @@ const isAuth = async(req,res,next)=>{
         }
         const verifyToken=await jwt.verify(token,process.env.JWT_SECRET)
        req.userId = verifyToken.userId;
-       console.log("Cookies received:", req.cookies);
-console.log("Token decoded:", verifyToken);
-
-
-
         next()
     }
     catch(error)

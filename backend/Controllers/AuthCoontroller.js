@@ -82,8 +82,8 @@ exports. Login = async (req,res)=>{
 
 exports.logout =async (req,res) =>{
     try{
-         res.clearCookie("token")
-         return res.status(200).json({message:"Logout Succuessfully"})
+         res.clearCookie("token", { httpOnly: true, sameSite: 'None', secure: true })
+         return res.status(200).json({message:"Logout Successfully"})
     }
     catch(error)
 

@@ -1,5 +1,4 @@
 import React, { useContext, useState, useEffect } from 'react';
-import bg from "../assests/image2.jpg"
 import { IoEye, IoEyeOff } from 'react-icons/io5';
 import { useNavigate } from 'react-router-dom';
 import { userdataContext } from '../Contexts/UserContext';
@@ -15,7 +14,6 @@ function SignIn() {
   const { serverUrl, userData, setUserdata, loadingUser } = useContext(userdataContext);
   const navigate = useNavigate();
 
-  // Redirect if already logged in
   useEffect(() => {
     if (!loadingUser && userData) {
       navigate('/');
@@ -45,70 +43,92 @@ function SignIn() {
 
   if (loadingUser) {
     return (
-      <div className="w-full h-screen flex justify-center items-center text-white text-xl">
-        Loading...
+      <div className="w-full min-h-screen bg-[#020209] flex justify-center items-center">
+        <div className="w-8 h-8 rounded-full border-2 border-indigo-500/30 border-t-indigo-500 animate-spin" />
       </div>
     );
   }
 
   return (
-    <div
-      className="w-full h-screen bg-cover flex justify-center items-center"
-      style={{ backgroundImage: `url(${bg})` }}
-    >
+    <div className="w-full min-h-screen bg-[#020209] flex justify-center items-center p-6 relative overflow-hidden">
+      
+      {/* Background glow & stars */}
+      <div className="absolute top-[-150px] left-[-150px] w-[500px] h-[500px] rounded-full pointer-events-none"
+        style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.08) 0%, transparent 70%)' }} />
+      <div className="absolute bottom-[-150px] right-[-150px] w-[500px] h-[500px] rounded-full pointer-events-none"
+        style={{ background: 'radial-gradient(circle, rgba(168,85,247,0.08) 0%, transparent 70%)' }} />
+
       <form
-        className="w-[90%] max-w-[600px] h-[700px] bg-[#00000062] backdrop-blur shadow-lg shadow-black flex flex-col justify-center items-center gap-5 px-4"
+        className="relative z-10 w-full max-w-[440px] bg-white/5 backdrop-blur-xl border border-white/10 p-10 rounded-[32px] shadow-[0_0_40px_rgba(0,0,0,0.5)] flex flex-col gap-6"
         onSubmit={handleSignIn}
+        style={{ animation: 'fadeSlideIn 0.4s ease-out forwards' }}
       >
-        <h1 className="text-white text-3xl font-semibold mb-6">
-          Sign In to <span className="text-white/70">Virtual Assistant</span>
-        </h1>
-
-        <input
-          type="email"
-          placeholder="Enter your Email"
-          className="w-[90%] h-[60px] px-5 text-white border-2 border-white bg-transparent placeholder-gray-300 rounded-full text-lg outline-none"
-          onChange={(e) => setEmail(e.target.value)}
-          value={email}
-          required
-        />
-
-        <div className="w-[90%] h-[60px] relative">
-          <input
-            type={showPassword ? 'text' : 'password'}
-            placeholder="Enter your Password"
-            className="w-full h-full px-5 text-white border-2 border-white bg-transparent placeholder-gray-300 rounded-full text-lg outline-none"
-            onChange={(e) => setPassword(e.target.value)}
-            value={password}
-            required
-          />
-          {showPassword ? (
-            <IoEyeOff
-              className="absolute top-4 right-5 w-6 h-6 text-white cursor-pointer"
-              onClick={() => setShowPassword(false)}
-            />
-          ) : (
-            <IoEye
-              className="absolute top-4 right-5 w-6 h-6 text-white cursor-pointer"
-              onClick={() => setShowPassword(true)}
-            />
-          )}
+        <div className="text-center mb-4">
+          <h1 className="font-orbitron text-2xl font-bold text-transparent bg-clip-text mb-2"
+            style={{ backgroundImage: 'linear-gradient(135deg, #a78bfa, #6366f1, #38bdf8)' }}>
+            Welcome Back
+          </h1>
+          <p className="text-white/40 text-sm tracking-wide">Sign in to your AI Assistant</p>
         </div>
 
-        {error && <p className="text-red-500 text-sm mt-2">* {error}</p>}
+        <div className="flex flex-col gap-5">
+          <input
+            type="email"
+            placeholder="Email Address"
+            className="w-full h-14 px-6 rounded-2xl text-white text-sm placeholder-white/30
+              bg-white/5 border border-white/10 outline-none transition-all duration-300
+              focus:border-indigo-500/60 focus:bg-white/10 focus:shadow-[0_0_20px_rgba(99,102,241,0.15)]"
+            onChange={(e) => setEmail(e.target.value)}
+            value={email}
+            required
+          />
+
+          <div className="relative w-full h-14">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              placeholder="Password"
+              className="w-full h-full px-6 pr-14 rounded-2xl text-white text-sm placeholder-white/30
+                bg-white/5 border border-white/10 outline-none transition-all duration-300
+                focus:border-indigo-500/60 focus:bg-white/10 focus:shadow-[0_0_20px_rgba(99,102,241,0.15)]"
+              onChange={(e) => setPassword(e.target.value)}
+              value={password}
+              required
+            />
+            <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-5 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/80 transition-colors">
+              {showPassword ? <IoEyeOff size={20} /> : <IoEye size={20} />}
+            </button>
+          </div>
+        </div>
+
+        {error && <p className="text-red-400 text-xs text-center">{error}</p>}
 
         <button
-          className="min-w-[150px] h-[60px] mt-4 bg-white text-black font-semibold rounded-full text-lg"
+          className="w-full h-14 mt-2 rounded-2xl font-semibold text-sm tracking-wide transition-all duration-300
+            text-white bg-gradient-to-r from-indigo-600 to-purple-600
+            hover:from-indigo-500 hover:to-purple-500
+            shadow-[0_0_20px_rgba(99,102,241,0.3)] hover:shadow-[0_0_30px_rgba(99,102,241,0.5)]
+            active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           disabled={loading}
         >
-          {loading ? 'Loading...' : 'Sign In'}
+          {loading ? (
+            <>
+              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+              Authenticating...
+            </>
+          ) : 'Sign In'}
         </button>
 
-        <p
-          className="text-white text-base mt-4 cursor-pointer"
-          onClick={() => navigate('/signup')}
-        >
-          New user? <span className="text-blue-400">Sign Up</span>
+        <p className="text-white/40 text-xs text-center mt-2">
+          New user?{' '}
+          <span 
+            className="text-indigo-400 hover:text-indigo-300 cursor-pointer font-medium transition-colors"
+            onClick={() => navigate('/signup')}
+          >
+            Create an account
+          </span>
         </p>
       </form>
     </div>

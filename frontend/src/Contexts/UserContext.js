@@ -5,7 +5,9 @@ import axios from 'axios';
 export const userdataContext = createContext();
 
 function UserContext({ children }) {
-  const serverUrl = 'https://virtual-assistant-major-project-backend.onrender.com';
+  const serverUrl = process.env.NODE_ENV === 'development' 
+    ? 'http://localhost:5005' 
+    : 'https://virtual-assistant-major-project-backend.onrender.com';
 
   const [userData, setUserdata] = useState(null);
   const [loadingUser, setLoadingUser] = useState(true);
@@ -29,20 +31,24 @@ function UserContext({ children }) {
     }
   };
 
-  const getGeminiResponse= async (command)=>{
-
+  const getGeminiResponse = async (command, assistantName, userName) => {
     try {
-      
-      const result = await axios.post(`${serverUrl}/api/user/asktoassistant`,{command},{withCredentials:true})
-      return result.data
+      // Use the protected /asktoassistant endpoint
+      const result = await axios.post(
+        `${serverUrl}/api/user/asktoassistant`,
+        {
+          command,
+          assistantName: assistantName || 'Assistant',
+          userName: userName || 'User',
+        },
+        { withCredentials: true }
+      );
+      return result.data;
     } catch (error) {
-
-      console.log(error)
-
-      
+      console.error('Gemini request failed:', error);
+      return { type: 'general', userInput: command, response: 'Sorry, I could not connect to the server. Please try again.' };
     }
-
-  }
+  };
 
   useEffect(() => {
     handleCurrentUser();

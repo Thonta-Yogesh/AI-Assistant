@@ -1,65 +1,104 @@
-import React, { useContext, useState } from 'react'
+import React, { useContext, useRef } from 'react'
 import Card from '../Components/Card'
 import img1 from '../assests/1Authbg1.jpg'
 import img2 from '../assests/2image.png'
-import img3 from '../assests/3img.jpg'
 import img4 from '../assests/4img.jpg'
-import img5 from '../assests/5img.jpg'
 import img6 from '../assests/6img.jpg'
 import img7 from '../assests/7img.jpg'
 import img8 from '../assests/authBg.png'
-import img9 from '../assests/image6.jpeg'
 import img10 from '../assests/image7.jpeg'
-import { RiImageAddLine } from "react-icons/ri";
-import { useRef } from 'react'
+import { RiImageAddLine } from 'react-icons/ri'
 import { userdataContext } from '../Contexts/UserContext'
 import { useNavigate } from 'react-router-dom'
-import { MdKeyboardBackspace } from "react-icons/md";
+import { MdKeyboardBackspace } from 'react-icons/md'
+
 function Customize() {
-  const {serverUrl,
-    userData,
-    setUserdata,
-    loadingUser,
-    backendImage,setbackendImage,
-    frontendImage,setFrontendImage,SelectedImage,SetselectedImage}=useContext(userdataContext)
+  const {
+    backendImage, setbackendImage,
+    frontendImage, setFrontendImage,
+    SelectedImage, SetselectedImage
+  } = useContext(userdataContext)
 
-    const navigate=useNavigate()
+  const navigate = useNavigate()
+  const inputImage = useRef()
 
-  
-  const inputImage=useRef();
-  const handleImage =(e)=>{
-    const file=e.target.files[0]
+  const handleImage = (e) => {
+    const file = e.target.files[0]
+    if (!file) return
     setbackendImage(file)
     setFrontendImage(URL.createObjectURL(file))
   }
 
-  return (
-    <div className='w-full h-[100vh] bg-gradient-to-t from-[#000000] to-[#030353] flex justify-center items-center flex-col p-[20px] '>
-       <MdKeyboardBackspace className='absolute top-[30px] cursor-pointer left-[30px] text-white w-[25px] h-[25] ' onClick={()=>navigate("/")}/>
-       <h1 className='text-white mb-[30px] text-[30px] text-center '>Select Your<span> Assistant</span> </h1>
-       <div className='w-[900px] max-w-[60%] flex justify-center items-center flex-wrap gap-[20px]'>
-         <Card image={img1}/>
-         <Card image={img2}/>
-         {/* <Card image={img3}/> */}
-         <Card image={img4}/>
-         {/* <Card image={img5}/> */}
-         <Card image={img6}/>
-         <Card image={img7}/>
-         <Card image={img8}/>
-         {/* <Card image={img9}/> */}
-         <Card image={img10}/>
-         <div className={`w-[70px] h-[140px] lg:w-[150px] lg:h-[250px] bg-[#030326] border-2 border-[#0000ff66] rounded-2xl overflow-hidden hover:shadow-2xl hover:shadow-blue-950  cursor-pointer hover:border-4 hover:border-white flex items-center justify-center  ${SelectedImage=="input"?"border-4 border-white shadow-2xl shadow-blue-950":null}`} onClick={()=>{inputImage.current.click()
-          SetselectedImage("input")
-         }}>
-      {!frontendImage && <RiImageAddLine className='text-white w[25px] h-[25px]'/>}
-      {frontendImage && <img src={frontendImage} className='h-full object-cover'/>}
-    </div>
-     <input type='file' accept='image/*' ref={inputImage} hidden onChange={handleImage}/>
-         </div>
-         {SelectedImage &&  <button className="min-w-[150px] h-[60px] mt-4 bg-white text-black font-semibold rounded-full text-lg cursor-pointer" onClick={()=>navigate("/customize2")}> Next</button> }
-         
-     
+  const avatarImages = [img1, img2, img4, img6, img7, img8, img10]
 
+  return (
+    <div className="w-full min-h-screen bg-[#020209] flex justify-center items-center flex-col p-6 relative overflow-hidden">
+
+      {/* Background glow */}
+      <div className="absolute top-[-150px] left-1/2 -translate-x-1/2 w-[600px] h-[400px] rounded-full pointer-events-none"
+        style={{ background: 'radial-gradient(ellipse, rgba(99,102,241,0.08) 0%, transparent 70%)' }} />
+
+      {/* Back button */}
+      <button
+        onClick={() => navigate('/')}
+        className="absolute top-6 left-6 flex items-center gap-2 text-white/40 hover:text-indigo-400 transition-colors text-sm"
+      >
+        <MdKeyboardBackspace className="w-5 h-5" />
+        <span>Back</span>
+      </button>
+
+      {/* Header */}
+      <div className="text-center mb-8">
+        <h1 className="font-orbitron text-3xl font-bold text-transparent bg-clip-text mb-2"
+          style={{ backgroundImage: 'linear-gradient(135deg, #a78bfa, #6366f1, #38bdf8)' }}>
+          Choose Your Assistant
+        </h1>
+        <p className="text-white/30 text-sm tracking-wide">Select an avatar to represent your AI companion</p>
+      </div>
+
+      {/* Avatar grid */}
+      <div className="flex flex-wrap justify-center gap-4 max-w-3xl">
+        {avatarImages.map((img, i) => (
+          <Card key={i} image={img} />
+        ))}
+
+        {/* Custom upload card */}
+        <div
+          onClick={() => { inputImage.current.click(); SetselectedImage('input') }}
+          className={`w-[80px] h-[130px] lg:w-[130px] lg:h-[210px] rounded-2xl overflow-hidden cursor-pointer
+            flex flex-col items-center justify-center gap-2 border-2 transition-all duration-300
+            bg-gradient-to-b from-white/5 to-white/2
+            ${SelectedImage === 'input'
+              ? 'border-indigo-400 shadow-[0_0_24px_rgba(99,102,241,0.5)]'
+              : 'border-white/10 hover:border-indigo-500/50 hover:shadow-[0_0_16px_rgba(99,102,241,0.3)]'
+            }`}
+        >
+          {frontendImage && SelectedImage === 'input'
+            ? <img src={frontendImage} alt="custom" className="w-full h-full object-cover" />
+            : <>
+                <RiImageAddLine className="w-6 h-6 text-indigo-400" />
+                <span className="text-white/30 text-[10px] text-center px-2 leading-tight">Upload custom</span>
+              </>
+          }
+        </div>
+
+        <input type="file" accept="image/*" ref={inputImage} hidden onChange={handleImage} />
+      </div>
+
+      {/* Next button */}
+      {SelectedImage && (
+        <button
+          onClick={() => navigate('/customize2')}
+          className="mt-8 px-10 py-3 rounded-full font-semibold text-sm tracking-wide transition-all duration-300
+            text-white bg-gradient-to-r from-indigo-600 to-purple-600
+            hover:from-indigo-500 hover:to-purple-500
+            shadow-[0_0_24px_rgba(99,102,241,0.4)] hover:shadow-[0_0_36px_rgba(99,102,241,0.6)]
+            active:scale-95"
+          style={{ animation: 'fadeSlideIn 0.4s ease-out' }}
+        >
+          Next →
+        </button>
+      )}
     </div>
   )
 }
