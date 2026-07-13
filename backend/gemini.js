@@ -2,7 +2,10 @@ const axios = require("axios");
 
 const geminiResponse = async (command, assistantName, userName) => {
   try {
-    const apiUrl = process.env.GEMINI_API_URL;
+    let apiUrl = process.env.GEMINI_API_URL;
+    if (apiUrl && apiUrl.includes("gemini-1.5-flash")) {
+      apiUrl = apiUrl.replace("gemini-1.5-flash", "gemini-flash-latest");
+    }
 
     const prompt = `You are a virtual assistant named ${assistantName} created by ${userName}.
 You are not Google. You will now behave like a voice-enabled assistant.
