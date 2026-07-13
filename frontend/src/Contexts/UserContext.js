@@ -18,8 +18,11 @@ function UserContext({ children }) {
 
   const handleCurrentUser = useCallback(async () => {
     try {
+      const token = localStorage.getItem('token');
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
       const results = await axios.get(`${serverUrl}/api/user/current`, {
         withCredentials: true,
+        headers,
       });
       setUserdata(results.data);
     } catch (error) {
@@ -29,6 +32,21 @@ function UserContext({ children }) {
       setLoadingUser(false);
     }
   }, [serverUrl]);
+
+  useEffect(() => {
+    const localToken = localStorage.getItem('token');
+    const tokenToUse = userData?.token || localToken;
+
+    if (userData && tokenToUse) {
+      if (userData.token) {
+        localStorage.setItem('token', userData.token);
+      }
+      axios.defaults.headers.common['Authorization'] = `Bearer ${tokenToUse}`;
+    } else if (userData === null && !loadingUser) {
+      localStorage.removeItem('token');
+      delete axios.defaults.headers.common['Authorization'];
+    }
+  }, [userData, loadingUser]);
 
   const getGeminiResponse = useCallback(async (command, assistantName, userName) => {
     try {

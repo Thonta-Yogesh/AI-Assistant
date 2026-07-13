@@ -31,7 +31,9 @@ exports.signUp = async (req,res)=>{
             sameSite:'None',
             secure:true
         })
-        return res.status(201).json(user)
+        const userObj = user.toObject();
+        userObj.token = token;
+        return res.status(201).json(userObj)
 
 
     }
@@ -70,7 +72,9 @@ exports. Login = async (req,res)=>{
             sameSite:'None',
             secure:true
         })
-        return res.status(200).json(user)
+        const userObj = user.toObject();
+        userObj.token = token;
+        return res.status(200).json(userObj)
 
 
     }

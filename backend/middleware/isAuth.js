@@ -1,7 +1,10 @@
 const jwt=require("jsonwebtoken") 
 const isAuth = async(req,res,next)=>{
     try{
-        const token=req.cookies.token
+        let token=req.cookies.token
+        if(!token && req.headers.authorization) {
+            token = req.headers.authorization.split(" ")[1] || req.headers.authorization;
+        }
         if(!token)
         {
             return res.status(400).json({message:'token not found'})
