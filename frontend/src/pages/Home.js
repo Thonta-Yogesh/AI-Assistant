@@ -66,6 +66,9 @@ function Home() {
   const [textInput, setTextInput]       = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
+  const [availableVoices, setAvailableVoices] = useState([]);
+  const [selectedVoiceName, setSelectedVoiceName] = useState('');
+
   const recognitionRef   = useRef(null);
   const isSpeakingRef    = useRef(false);
   const isRecognizingRef = useRef(false);
@@ -92,7 +95,16 @@ function Home() {
     const utt = new SpeechSynthesisUtterance(text.replace(/\n/g, '. '));
     isSpeakingRef.current = true; setAiSpeaking(true);
     utt.onend = () => { isSpeakingRef.current = false; setAiSpeaking(false); setTimeout(startRecognition, 800); };
-    const selectedVoice = pickVoiceForAssistant(userData?.assistantName, allVoices.current);
+    
+    const savedVoiceName = localStorage.getItem('selectedVoiceName');
+    let selectedVoice = null;
+    if (savedVoiceName) {
+      selectedVoice = allVoices.current.find((v) => v.name === savedVoiceName);
+    }
+    if (!selectedVoice) {
+      selectedVoice = pickVoiceForAssistant(userData?.assistantName, allVoices.current);
+    }
+    
     if (selectedVoice) utt.voice = selectedVoice;
     synth.cancel(); synth.speak(utt);
   };
@@ -146,7 +158,23 @@ function Home() {
   };
 
   useEffect(() => {
-    const load = () => { allVoices.current = synth.getVoices(); };
+    const load = () => { 
+      const list = synth.getVoices();
+      allVoices.current = list; 
+      const engVoices = list.filter(v => v.lang.startsWith('en') || v.lang.startsWith('EN') || v.lang.startsWith('hi') || v.lang.startsWith('HI'));
+      setAvailableVoices(engVoices);
+      
+      const saved = localStorage.getItem('selectedVoiceName');
+      if (saved) {
+        setSelectedVoiceName(saved);
+      } else {
+        const defaultVoice = pickVoiceForAssistant(userData?.assistantName, list);
+        if (defaultVoice) {
+          setSelectedVoiceName(defaultVoice.name);
+          localStorage.setItem('selectedVoiceName', defaultVoice.name);
+        }
+      }
+    };
     if (speechSynthesis.onvoiceschanged !== undefined) speechSynthesis.onvoiceschanged = load;
     load();
     let attempts = 0;
@@ -157,7 +185,7 @@ function Home() {
     }, 300);
     return () => clearInterval(pollId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [userData]);
 
   useEffect(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -278,9 +306,41 @@ function Home() {
         </div>
 
         {/* ── Name ── */}
-        <div style={{ textAlign: 'center' }}>
+        <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <h1 style={styles.assistantName}>{userData?.assistantName || 'ARIA'}</h1>
           <p style={styles.assistantSub}>AI ASSISTANT</p>
+          {availableVoices.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <select
+                value={selectedVoiceName}
+                onChange={(e) => {
+                  setSelectedVoiceName(e.target.value);
+                  localStorage.setItem('selectedVoiceName', e.target.value);
+                }}
+                style={{
+                  background: 'rgba(255,255,255,0.03)',
+                  color: 'rgba(255,255,255,0.4)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '12px',
+                  padding: '4px 8px',
+                  fontSize: '9px',
+                  fontFamily: 'Orbitron, sans-serif',
+                  letterSpacing: '1px',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  maxWidth: '180px',
+                  textAlign: 'center',
+                  transition: 'all 0.3s',
+                }}
+              >
+                {availableVoices.map((voice) => (
+                  <option key={voice.name} value={voice.name} style={{ background: '#07070d', color: 'rgba(255,255,255,0.8)' }}>
+                    {voice.name.replace('Microsoft', '').replace('Google', '').replace('Natural', '').replace('Desktop', '').trim()} ({voice.lang.split('-')[0].toUpperCase()})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* ── Status ── */}
