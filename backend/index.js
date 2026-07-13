@@ -10,7 +10,11 @@ const cors = require("cors");
 const app = express();
 
 app.use(cors({
-  origin: ["http://localhost:3000", "https://virtual-assistant-major-project.vercel.app"],
+  origin: [
+    "http://localhost:3000", 
+    "https://virtual-assistant-major-project.vercel.app",
+    process.env.FRONTEND_URL
+  ].filter(Boolean),
   credentials: true,
 }));
 app.use(express.json());

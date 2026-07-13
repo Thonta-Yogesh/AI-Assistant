@@ -7,7 +7,7 @@ export const userdataContext = createContext();
 function UserContext({ children }) {
   const serverUrl = process.env.NODE_ENV === 'development' 
     ? 'http://localhost:5005' 
-    : 'https://virtual-assistant-major-project-backend.onrender.com';
+    : process.env.REACT_APP_BACKEND_URL || 'https://virtual-assistant-major-project-backend.onrender.com';
 
   const [userData, setUserdata] = useState(null);
   const [loadingUser, setLoadingUser] = useState(true);
