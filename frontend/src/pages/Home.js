@@ -156,6 +156,7 @@ function Home() {
       if (allVoices.current.length > 0 || attempts > 10) clearInterval(pollId);
     }, 300);
     return () => clearInterval(pollId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
