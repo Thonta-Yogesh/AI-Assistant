@@ -179,7 +179,17 @@ function Home() {
         engVoices = list.filter(v => v.lang.startsWith('en') || v.lang.startsWith('EN'));
       }
 
-      setAvailableVoices(engVoices);
+      // De-duplicate by name
+      const uniqueVoices = [];
+      const seenNames = new Set();
+      for (const v of engVoices) {
+        if (!seenNames.has(v.name)) {
+          seenNames.add(v.name);
+          uniqueVoices.push(v);
+        }
+      }
+
+      setAvailableVoices(uniqueVoices);
       
       const saved = localStorage.getItem('selectedVoiceName');
       if (saved) {
