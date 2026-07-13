@@ -161,7 +161,24 @@ function Home() {
     const load = () => { 
       const list = synth.getVoices();
       allVoices.current = list; 
-      const engVoices = list.filter(v => v.lang.startsWith('en') || v.lang.startsWith('EN') || v.lang.startsWith('hi') || v.lang.startsWith('HI'));
+      
+      const preferredKeywords = [
+        'siri', 'samantha', 'daniel', 'google us english', 
+        'google uk english male', 'google uk english female',
+        'guy', 'aria', 'jenny', 'david', 'zira'
+      ];
+      
+      let engVoices = list.filter(v => {
+        const langOK = v.lang.startsWith('en') || v.lang.startsWith('EN');
+        if (!langOK) return false;
+        const voiceName = v.name.toLowerCase();
+        return preferredKeywords.some(kw => voiceName.includes(kw));
+      });
+
+      if (engVoices.length === 0) {
+        engVoices = list.filter(v => v.lang.startsWith('en') || v.lang.startsWith('EN'));
+      }
+
       setAvailableVoices(engVoices);
       
       const saved = localStorage.getItem('selectedVoiceName');
