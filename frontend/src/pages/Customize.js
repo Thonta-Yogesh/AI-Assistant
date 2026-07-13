@@ -14,7 +14,7 @@ import { MdKeyboardBackspace } from 'react-icons/md'
 
 function Customize() {
   const {
-    backendImage, setbackendImage,
+    setbackendImage,
     frontendImage, setFrontendImage,
     SelectedImage, SetselectedImage
   } = useContext(userdataContext)

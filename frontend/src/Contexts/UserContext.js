@@ -1,4 +1,4 @@
-import React, { createContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 
 
@@ -16,24 +16,22 @@ function UserContext({ children }) {
      const[backendImage,setbackendImage]=useState(null)
      const[SelectedImage,SetselectedImage]=useState(null)
 
-  const handleCurrentUser = async () => {
+  const handleCurrentUser = useCallback(async () => {
     try {
       const results = await axios.get(`${serverUrl}/api/user/current`, {
         withCredentials: true,
       });
       setUserdata(results.data);
-      console.log('Logged in user:', results.data);
     } catch (error) {
-      console.log('No user logged in or error:', error);
-      setUserdata(null); 
+      console.log('Not logged in:', error.message);
+      setUserdata(null);
     } finally {
       setLoadingUser(false);
     }
-  };
+  }, [serverUrl]);
 
-  const getGeminiResponse = async (command, assistantName, userName) => {
+  const getGeminiResponse = useCallback(async (command, assistantName, userName) => {
     try {
-      // Use the protected /asktoassistant endpoint
       const result = await axios.post(
         `${serverUrl}/api/user/asktoassistant`,
         {
@@ -48,11 +46,11 @@ function UserContext({ children }) {
       console.error('Gemini request failed:', error);
       return { type: 'general', userInput: command, response: 'Sorry, I could not connect to the server. Please try again.' };
     }
-  };
+  }, [serverUrl]);
 
   useEffect(() => {
     handleCurrentUser();
-  }, []);
+  }, [handleCurrentUser]);
 
   // Context value shared across app
   const value = {

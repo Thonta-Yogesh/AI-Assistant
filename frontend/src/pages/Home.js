@@ -4,14 +4,67 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import aiImg from '../assests/ai.gif';
 
+// Curated pool of distinct, broadly-available browser TTS voices
+const VOICE_POOL = [
+  { match: (v) => v.name.includes('Google UK English Male'), lang: 'en-GB' },
+  { match: (v) => v.name.includes('Google US English'), lang: 'en-US' },
+  { match: (v) => v.name.includes('Daniel'), lang: 'en-GB' },
+  { match: (v) => v.name.includes('Samantha'), lang: 'en-US' },
+  { match: (v) => v.name.includes('Google UK English Female'), lang: 'en-GB' },
+  { match: (v) => v.name.includes('Victoria'), lang: 'en-US' },
+  { match: (v) => v.name.includes('Google Australian'), lang: 'en-AU' },
+  { match: (v) => v.name.includes('Karen'), lang: 'en-AU' },
+  { match: (v) => v.name.includes('Google Indian'), lang: 'en-IN' },
+  { match: (v) => v.name.includes('Rishi'), lang: 'en-IN' },
+  { match: (v) => v.name.includes('Moira'), lang: 'en-IE' },
+];
+
+function hashString(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+function pickVoiceForAssistant(assistantName, voices) {
+  if (!voices?.length) return null;
+  const name = (assistantName || '').toLowerCase().trim();
+  if (name.includes('jarvis') || name.includes('friday')) {
+    return (
+      voices.find((v) => v.name.includes('Google UK English Male')) ||
+      voices.find((v) => v.name.includes('Daniel')) ||
+      voices.find((v) => v.lang === 'en-GB')
+    );
+  }
+  if (name.includes('sara') || name.includes('aria')) {
+    return (
+      voices.find((v) => v.name.includes('Google US English')) ||
+      voices.find((v) => v.name.includes('Samantha')) ||
+      voices.find((v) => v.lang === 'en-US')
+    );
+  }
+  const availableSlots = VOICE_POOL
+    .map((slot) => voices.find(slot.match) || voices.find((v) => v.lang === slot.lang))
+    .filter(Boolean);
+  if (availableSlots.length) {
+    const idx = hashString(name || 'assistant') % availableSlots.length;
+    return availableSlots[idx];
+  }
+  return voices.find((v) => v.lang?.startsWith('en')) || voices[0];
+}
+
 function Home() {
-  const { userData, serverUrl, setUserdata, getGeminiResponse } = useContext(userdataContext);
+  const { userData, serverUrl, setUserdata, getGeminiResponse, backendStatus } = useContext(userdataContext);
   const navigate = useNavigate();
 
   const [listening, setListening]       = useState(false);
   const [aiSpeaking, setAiSpeaking]     = useState(false);
   const [messages, setMessages]         = useState([]);
   const [liveUserText, setLiveUserText] = useState('');
+  const [textInput, setTextInput]       = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const recognitionRef   = useRef(null);
   const isSpeakingRef    = useRef(false);
@@ -39,35 +92,15 @@ function Home() {
     const utt = new SpeechSynthesisUtterance(text.replace(/\n/g, '. '));
     isSpeakingRef.current = true; setAiSpeaking(true);
     utt.onend = () => { isSpeakingRef.current = false; setAiSpeaking(false); setTimeout(startRecognition, 800); };
-    
-    // Dynamic voice selection based on assistant name
-    const voices = allVoices.current;
-    const name = userData?.assistantName?.toLowerCase() || '';
-    let selectedVoice;
-
-    if (name.includes('jarvis') || name.includes('nova') || name.includes('friday')) {
-      // Prefer British/Male voices for Jarvis-like personas
-      selectedVoice = voices.find(v => v.name.includes('Google UK English Male')) || 
-                      voices.find(v => v.name.includes('Daniel')) ||
-                      voices.find(v => v.lang === 'en-GB');
-    } else {
-      // Prefer standard Female voices for Sara/Aria personas
-      selectedVoice = voices.find(v => v.name.includes('Google US English')) || 
-                      voices.find(v => v.name.includes('Samantha')) ||
-                      voices.find(v => v.name.includes('Victoria')) ||
-                      voices.find(v => v.lang === 'en-US');
-    }
-
-    if (!selectedVoice) selectedVoice = voices.find(v => v.lang.startsWith('en'));
+    const selectedVoice = pickVoiceForAssistant(userData?.assistantName, allVoices.current);
     if (selectedVoice) utt.voice = selectedVoice;
-    
     synth.cancel(); synth.speak(utt);
   };
 
   const handleCommand = (data) => {
     const { type, userInput, response } = data;
     speak(response);
-    if (type === 'google-search')                    window.open(`https://www.google.com/search?q=${encodeURIComponent(userInput)}`, '_blank');
+    if (type === 'google-search')                             window.open(`https://www.google.com/search?q=${encodeURIComponent(userInput)}`, '_blank');
     if (type === 'youtube-search' || type === 'youtube-play') window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(userInput)}`, '_blank');
     if (type === 'calculator-open') window.open('https://www.google.com/search?q=calculator', '_blank');
     if (type === 'instagram-open')  window.open('https://www.instagram.com/', '_blank');
@@ -75,14 +108,59 @@ function Home() {
     if (type === 'weather-show')    window.open(`https://www.google.com/search?q=weather+${encodeURIComponent(userInput)}`, '_blank');
   };
 
+  // ── Shared command processor used by both voice AND text input ──
+  const processCommand = async (transcript) => {
+    if (!transcript?.trim() || isProcessing) return;
+    setIsProcessing(true);
+    setLiveUserText('');
+    setMessages(prev => [...prev, { role: 'user', text: transcript }]);
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch (_) {}
+      isRecognizingRef.current = false;
+      setListening(false);
+    }
+    try {
+      const data = await getGeminiResponse(transcript, userData?.assistantName, userData?.name);
+      const safeData = data && data.response
+        ? data
+        : { type: 'general', userInput: transcript, response: 'Sorry, something went wrong. Please try again.' };
+      setMessages(prev => [...prev, { role: 'ai', text: safeData.response }]);
+      handleCommand(safeData);
+    } catch (err) {
+      console.error(err);
+      const fallback = 'Sorry, something went wrong on my end. Please try again.';
+      setMessages(prev => [...prev, { role: 'ai', text: fallback }]);
+      speak(fallback);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // ── Text input submit ──
+  const handleTextSubmit = (e) => {
+    e.preventDefault();
+    const cmd = textInput.trim();
+    if (!cmd) return;
+    setTextInput('');
+    processCommand(cmd);
+  };
+
   useEffect(() => {
     const load = () => { allVoices.current = synth.getVoices(); };
     if (speechSynthesis.onvoiceschanged !== undefined) speechSynthesis.onvoiceschanged = load;
     load();
+    let attempts = 0;
+    const pollId = setInterval(() => {
+      load();
+      attempts += 1;
+      if (allVoices.current.length > 0 || attempts > 10) clearInterval(pollId);
+    }, 300);
+    return () => clearInterval(pollId);
   }, []);
 
   useEffect(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return; // graceful fallback — text input still works
     const rec = new SR();
     rec.continuous = true; rec.lang = 'en-US'; rec.interimResults = true;
     recognitionRef.current = rec;
@@ -94,18 +172,8 @@ function Home() {
       );
       isSpeakingRef.current = true; setAiSpeaking(true);
       utt.onend = () => { isSpeakingRef.current = false; setAiSpeaking(false); setTimeout(startRecognition, 600); };
-      
-      const voices = allVoices.current;
-      const name = userData?.assistantName?.toLowerCase() || '';
-      let selectedVoice;
-      if (name.includes('jarvis') || name.includes('nova') || name.includes('friday')) {
-        selectedVoice = voices.find(v => v.name.includes('Google UK English Male')) || voices.find(v => v.name.includes('Daniel')) || voices.find(v => v.lang === 'en-GB');
-      } else {
-        selectedVoice = voices.find(v => v.name.includes('Google US English')) || voices.find(v => v.name.includes('Samantha')) || voices.find(v => v.name.includes('Victoria')) || voices.find(v => v.lang === 'en-US');
-      }
-      if (!selectedVoice) selectedVoice = voices.find(v => v.lang.startsWith('en'));
+      const selectedVoice = pickVoiceForAssistant(userData?.assistantName, allVoices.current);
       if (selectedVoice) utt.voice = selectedVoice;
-
       synth.cancel(); synth.speak(utt);
     }, 600);
 
@@ -114,6 +182,7 @@ function Home() {
     rec.onerror  = () => { isRecognizingRef.current = false; setListening(false); if (!isSpeakingRef.current && mounted) setTimeout(startRecognition, 1000); };
 
     rec.onresult = async (e) => {
+      if (isProcessing) return;
       const results = Array.from(e.results);
       const interim = results.filter(r => !r.isFinal).map(r => r[0].transcript).join('');
       if (interim) setLiveUserText(interim);
@@ -121,21 +190,14 @@ function Home() {
       const last = results[results.length - 1];
       if (!last.isFinal) return;
       const transcript = results.filter(r => r.isFinal).map(r => r[0].transcript).join('').trim();
-      const wakeWord   = userData?.assistantName?.toLowerCase();
 
-      if (wakeWord && transcript.toLowerCase().includes(wakeWord)) {
-        setLiveUserText('');
-        setMessages(prev => [...prev, { role: 'user', text: transcript }]);
-        rec.stop(); isRecognizingRef.current = false; setListening(false);
-        try {
-          const data = await getGeminiResponse(transcript, userData?.assistantName, userData?.name);
-          if (data) { setMessages(prev => [...prev, { role: 'ai', text: data.response }]); handleCommand(data); }
-        } catch (err) { console.error(err); }
-      } else { setLiveUserText(''); }
+      // Always process the command when the user finishes speaking
+      processCommand(transcript);
     };
 
     interval = setInterval(() => { if (!isRecognizingRef.current && !isSpeakingRef.current && mounted) startRecognition(); }, 10000);
-    return () => { mounted = false; clearInterval(interval); rec.stop(); };
+    return () => { mounted = false; clearInterval(interval); try { rec.stop(); } catch (_) {} };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const active = listening || aiSpeaking;
@@ -156,16 +218,36 @@ function Home() {
       {/* ════════════════ LEFT PANEL ════════════════ */}
       <div style={styles.leftPanel}>
 
-        {/* ── Nav bar ── */}
-        <div style={styles.nav}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#818cf8', animation: 'glowPulse 2s ease-in-out infinite' }} />
-            <span style={styles.navLabel}>Online</span>
+        {/* ── Sleek Nav bar ── */}
+        <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0, padding: '4px 8px' }}>
+          
+          {/* Back Button */}
+          <button 
+            onClick={() => navigate('/customize')} 
+            style={{ ...styles.iconBtn, background: 'rgba(255,255,255,0.03)', color: 'rgba(255,255,255,0.6)' }}
+            title="Back to Avatar Selection"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
+            </svg>
+          </button>
+
+          {/* Online Indicator */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 12px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: 20, border: '1px solid rgba(99, 102, 241, 0.1)' }}>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#818cf8', boxShadow: '0 0 8px #818cf8', animation: 'glowPulse 2s ease-in-out infinite' }} />
+            <span style={{ fontFamily: 'Orbitron, sans-serif', color: '#818cf8', fontSize: 9, letterSpacing: 2, textTransform: 'uppercase' }}>Online</span>
           </div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={() => navigate('/customize')} style={styles.navBtn}>Customize</button>
-            <button onClick={handleLogout} style={{ ...styles.navBtn, color: '#f87171' }}>Logout</button>
-          </div>
+
+          {/* Logout Button */}
+          <button 
+            onClick={handleLogout} 
+            style={{ ...styles.iconBtn, background: 'rgba(248, 113, 113, 0.05)', color: '#f87171', borderColor: 'rgba(248, 113, 113, 0.1)' }}
+            title="Logout"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+          </button>
         </div>
 
         {/* ── Avatar ── */}
@@ -223,12 +305,12 @@ function Home() {
           }}>
             <div style={{ width: 6, height: 6, borderRadius: '50%', background: active ? accentColor : 'rgba(255,255,255,0.2)', animation: active ? 'glowPulse 2s ease-in-out infinite' : 'none' }} />
             <span style={{ fontSize: 11, fontWeight: 500, color: active ? accentColor : 'rgba(255,255,255,0.35)', whiteSpace: 'nowrap' }}>
-              {aiSpeaking ? 'Speaking…' : listening ? `Listening for "${userData?.assistantName || ''}"` : 'Standby'}
+              {isProcessing ? 'Thinking…' : aiSpeaking ? 'Speaking…' : listening ? `Listening for "${userData?.assistantName || ''}"` : 'Standby'}
             </span>
           </div>
           {/* Hint */}
           <p style={{ color: 'rgba(255,255,255,0.2)', fontSize: 11, textAlign: 'center', lineHeight: 1.5 }}>
-            Say <span style={{ color: '#818cf8' }}>"{userData?.assistantName || 'the name'}"</span> to activate
+            Say <span style={{ color: '#818cf8' }}>"{userData?.assistantName || 'the name'}"</span> or type below
           </p>
         </div>
 
@@ -266,7 +348,7 @@ function Home() {
                 </svg>
               </div>
               <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>No conversation yet</p>
-              <p style={{ color: 'rgba(255,255,255,0.15)', fontSize: 11 }}>Say the assistant name to start</p>
+              <p style={{ color: 'rgba(255,255,255,0.15)', fontSize: 11 }}>Say the assistant name or type a message below</p>
             </div>
           )}
 
@@ -306,6 +388,41 @@ function Home() {
           <div ref={chatEndRef} />
         </div>
 
+        {/* ── Text Input Bar ── */}
+        <form onSubmit={handleTextSubmit} style={styles.inputBar}>
+          <input
+            type="text"
+            value={textInput}
+            onChange={(e) => setTextInput(e.target.value)}
+            placeholder={`Type a command or ask ${userData?.assistantName || 'your assistant'}…`}
+            disabled={isProcessing}
+            style={{
+              ...styles.textInput,
+              opacity: isProcessing ? 0.5 : 1,
+              cursor: isProcessing ? 'not-allowed' : 'text',
+            }}
+          />
+          <button
+            type="submit"
+            disabled={isProcessing || !textInput.trim()}
+            style={{
+              ...styles.sendBtn,
+              opacity: (isProcessing || !textInput.trim()) ? 0.4 : 1,
+              cursor: (isProcessing || !textInput.trim()) ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {isProcessing ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1s linear infinite' }}>
+                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+            )}
+          </button>
+        </form>
+
         {/* Footer */}
         <div style={styles.chatFooter}>
           <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
@@ -314,11 +431,17 @@ function Home() {
             ))}
           </div>
           <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 11 }}>
-            {aiSpeaking ? `${userData?.assistantName || 'AI'} is speaking` : listening ? 'Microphone active' : 'Waiting for wake word'}
+            {isProcessing ? 'Processing…' : aiSpeaking ? `${userData?.assistantName || 'AI'} is speaking` : listening ? 'Microphone active' : 'Waiting for wake word'}
           </span>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5 }}>
-            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', animation: 'glowPulse 2s ease-in-out infinite' }} />
-            <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 11 }}>Connected</span>
+            <div style={{
+              width: 6, height: 6, borderRadius: '50%',
+              background: backendStatus === 'connected' ? '#4ade80' : backendStatus === 'waking' ? '#facc15' : backendStatus === 'offline' ? '#f87171' : 'rgba(255,255,255,0.25)',
+              animation: 'glowPulse 2s ease-in-out infinite',
+            }} />
+            <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 11 }}>
+              {backendStatus === 'connected' ? 'Connected' : backendStatus === 'waking' ? 'Waking server…' : backendStatus === 'offline' ? 'Server unreachable' : 'Connecting…'}
+            </span>
           </div>
         </div>
       </div>
@@ -326,7 +449,7 @@ function Home() {
   );
 }
 
-/* ─── Pre-compute stars so they don't change on re-render ─── */
+/* ─── Pre-compute stars ─── */
 const stars = Array.from({ length: 30 }, () => ({
   top:   Math.random() * 100 + '%',
   left:  Math.random() * 100 + '%',
@@ -352,7 +475,7 @@ const styles = {
   leftPanel: {
     width: '40%', height: '100%', flexShrink: 0,
     display: 'flex', flexDirection: 'column', alignItems: 'center',
-    justifyContent: 'space-evenly',   /* <— evenly distribute 5 items */
+    justifyContent: 'space-evenly',
     padding: '12px 20px',
     minWidth: 0,
   },
@@ -362,6 +485,11 @@ const styles = {
   },
   navLabel: { fontFamily: 'Orbitron, sans-serif', color: '#818cf8', fontSize: 9, letterSpacing: 3, textTransform: 'uppercase' },
   navBtn:   { fontSize: 10, color: 'rgba(255,255,255,0.4)', padding: '4px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', cursor: 'pointer' },
+  iconBtn: {
+    width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    borderRadius: '50%', border: '1px solid rgba(255,255,255,0.1)',
+    cursor: 'pointer', transition: 'all 0.2s ease', backdropFilter: 'blur(4px)',
+  },
 
   /* Avatar */
   avatarWrap: { position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' },
@@ -392,6 +520,39 @@ const styles = {
   chatHeader: { padding: '12px 18px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 },
   clearBtn:   { fontSize: 10, color: 'rgba(255,255,255,0.25)', padding: '3px 8px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)', background: 'transparent', cursor: 'pointer' },
   chatBody:   { flex: 1, overflowY: 'auto', padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 12 },
+
+  /* Text input bar */
+  inputBar: {
+    display: 'flex', alignItems: 'center', gap: 8,
+    padding: '10px 18px',
+    borderTop: '1px solid rgba(255,255,255,0.06)',
+    background: 'rgba(255,255,255,0.02)',
+    flexShrink: 0,
+  },
+  textInput: {
+    flex: 1,
+    background: 'rgba(255,255,255,0.05)',
+    border: '1px solid rgba(99,102,241,0.25)',
+    borderRadius: 12,
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 13,
+    padding: '10px 14px',
+    outline: 'none',
+    fontFamily: 'Inter, sans-serif',
+    transition: 'border-color 0.2s',
+  },
+  sendBtn: {
+    width: 38, height: 38,
+    borderRadius: 10,
+    border: '1px solid rgba(99,102,241,0.4)',
+    background: 'linear-gradient(135deg,rgba(79,70,229,0.6),rgba(88,28,135,0.5))',
+    color: 'white',
+    cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0,
+    transition: 'opacity 0.2s',
+  },
+
   chatFooter: { padding: '9px 18px', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 },
 
   /* Empty state */
