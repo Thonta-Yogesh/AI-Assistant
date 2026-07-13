@@ -3,8 +3,9 @@ const axios = require("axios");
 const geminiResponse = async (command, assistantName, userName) => {
   try {
     let apiUrl = process.env.GEMINI_API_URL;
-    if (apiUrl && apiUrl.includes("gemini-1.5-flash")) {
-      apiUrl = apiUrl.replace("gemini-1.5-flash", "gemini-flash-latest");
+    if (apiUrl) {
+      apiUrl = apiUrl.replace("gemini-1.5-flash", "gemini-3.1-flash-lite")
+                     .replace("gemini-flash-latest", "gemini-3.1-flash-lite");
     }
 
     const prompt = `You are a virtual assistant named ${assistantName} created by ${userName}.
