@@ -2,7 +2,7 @@ import React, { useContext, useState, useEffect, useRef } from 'react';
 import { userdataContext } from '../Contexts/UserContext';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import aiImg from '../assests/ai.gif';
+import aiImg from '../assets/ai.gif';
 
 // Curated pool of distinct, broadly-available browser TTS voices
 const VOICE_POOL = [
@@ -68,10 +68,12 @@ function Home() {
 
   const [availableVoices, setAvailableVoices] = useState([]);
   const [selectedVoiceName, setSelectedVoiceName] = useState('');
+  const [speechLang, setSpeechLang] = useState(() => localStorage.getItem('speechLang') || 'en-IN');
 
   const recognitionRef   = useRef(null);
   const isSpeakingRef    = useRef(false);
   const isRecognizingRef = useRef(false);
+  const isProcessingRef  = useRef(false);
   const allVoices        = useRef([]);
   const chatEndRef       = useRef(null);
   const synth            = window.speechSynthesis;
@@ -85,45 +87,95 @@ function Home() {
   };
 
   const startRecognition = () => {
-    if (!isSpeakingRef.current && !isRecognizingRef.current) {
+    if (!isSpeakingRef.current && !isRecognizingRef.current && !isProcessingRef.current) {
       try { recognitionRef.current?.start(); setListening(true); }
       catch (e) { if (!e.message?.includes('start')) console.error(e); }
     }
   };
 
-  const speak = (text) => {
-    const utt = new SpeechSynthesisUtterance(text.replace(/\n/g, '. '));
-    isSpeakingRef.current = true; setAiSpeaking(true);
-    utt.onend = () => { isSpeakingRef.current = false; setAiSpeaking(false); setTimeout(startRecognition, 800); };
-    
-    const savedVoiceName = localStorage.getItem('selectedVoiceName');
+  const speak = (text, lang, textRoman) => {
+    const useLang = lang || speechLang || 'en-IN';
+    const voices = allVoices.current;
     let selectedVoice = null;
+
+    // 1. Get the voice the user wants (from saved dropdown selection or default assistant picker)
+    const savedVoiceName = localStorage.getItem('selectedVoiceName');
     if (savedVoiceName) {
-      selectedVoice = allVoices.current.find((v) => v.name === savedVoiceName);
+      selectedVoice = voices.find((v) => v.name === savedVoiceName);
     }
     if (!selectedVoice) {
-      selectedVoice = pickVoiceForAssistant(userData?.assistantName, allVoices.current);
+      selectedVoice = pickVoiceForAssistant(userData?.assistantName, voices);
     }
-    
+
+    // 2. Determine if the selected voice is a local native Hindi or Telugu voice (excluding network Google voices)
+    const isHindiVoice = selectedVoice && 
+      !selectedVoice.name.toLowerCase().includes('google') && 
+      selectedVoice.localService !== false && (
+        selectedVoice.lang?.startsWith('hi') || 
+        selectedVoice.lang?.startsWith('HI') ||
+        selectedVoice.name?.toLowerCase().includes('hindi')
+      );
+    const isTeluguVoice = selectedVoice && 
+      !selectedVoice.name.toLowerCase().includes('google') && 
+      selectedVoice.localService !== false && (
+        selectedVoice.lang?.startsWith('te') || 
+        selectedVoice.lang?.startsWith('TE') ||
+        selectedVoice.name?.toLowerCase().includes('telugu')
+      );
+
+    // 3. Determine the actual text to speak and language code
+    let speakText = text;
+    let speakLang = useLang;
+
+    if (useLang === 'hi-IN') {
+      if (isHindiVoice) {
+        speakText = text;
+        speakLang = 'hi-IN';
+      } else {
+        // Fallback: Speak the Romanized script using the selected English voice
+        speakText = textRoman || text;
+        speakLang = 'en-IN';
+      }
+    } else if (useLang === 'te-IN') {
+      if (isTeluguVoice) {
+        speakText = text;
+        speakLang = 'te-IN';
+      } else {
+        // Fallback: Speak the Romanized script using the selected English voice
+        speakText = textRoman || text;
+        speakLang = 'en-IN';
+      }
+    }
+
+    const utt = new SpeechSynthesisUtterance(speakText.replace(/\n/g, '. '));
+    utt.lang = speakLang;
     if (selectedVoice) utt.voice = selectedVoice;
+
+    isSpeakingRef.current = true; setAiSpeaking(true);
+    utt.onend = () => { isSpeakingRef.current = false; setAiSpeaking(false); setTimeout(startRecognition, 800); };
+    utt.onerror = () => { isSpeakingRef.current = false; setAiSpeaking(false); setTimeout(startRecognition, 800); };
+
     synth.cancel(); synth.speak(utt);
   };
 
   const handleCommand = (data) => {
-    const { type, userInput, response } = data;
-    speak(response);
-    if (type === 'google-search')                             window.open(`https://www.google.com/search?q=${encodeURIComponent(userInput)}`, '_blank');
-    if (type === 'youtube-search' || type === 'youtube-play') window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(userInput)}`, '_blank');
+    const { type, userInput, response, responseRoman, lang } = data;
+    speak(response, lang || 'en-IN', responseRoman);
+
+    const q = encodeURIComponent(userInput || '');
+    if (type === 'google-search')                             window.open(`https://www.google.com/search?q=${q}`, '_blank');
+    if (type === 'youtube-search' || type === 'youtube-play') window.open(`https://www.youtube.com/results?search_query=${q}`, '_blank');
     if (type === 'calculator-open') window.open('https://www.google.com/search?q=calculator', '_blank');
     if (type === 'instagram-open')  window.open('https://www.instagram.com/', '_blank');
     if (type === 'facebook-open')   window.open('https://www.facebook.com/', '_blank');
-    if (type === 'weather-show')    window.open(`https://www.google.com/search?q=weather+${encodeURIComponent(userInput)}`, '_blank');
+    if (type === 'weather-show')    window.open(`https://www.google.com/search?q=weather+${q}`, '_blank');
   };
 
   // ── Shared command processor used by both voice AND text input ──
   const processCommand = async (transcript) => {
     if (!transcript?.trim() || isProcessing) return;
     setIsProcessing(true);
+    isProcessingRef.current = true;
     setLiveUserText('');
     setMessages(prev => [...prev, { role: 'user', text: transcript }]);
     if (recognitionRef.current) {
@@ -132,11 +184,43 @@ function Home() {
       setListening(false);
     }
     try {
-      const data = await getGeminiResponse(transcript, userData?.assistantName, userData?.name);
+      const currentHistory = [...messages, { role: 'user', text: transcript }];
+      const data = await getGeminiResponse(transcript, userData?.assistantName, userData?.name, speechLang, currentHistory);
       const safeData = data && data.response
         ? data
-        : { type: 'general', userInput: transcript, response: 'Sorry, something went wrong. Please try again.' };
-      setMessages(prev => [...prev, { role: 'ai', text: safeData.response }]);
+        : { type: 'general', userInput: transcript, response: 'Sorry, something went wrong. Please try again.', responseRoman: 'Sorry, something went wrong. Please try again.' };
+
+      // Determine redirect link if command is an opening or search command, to fallback if popup blocker blocks it
+      let messageLink = null;
+      let messageLinkLabel = null;
+      const q = encodeURIComponent(safeData.userInput || transcript);
+
+      if (safeData.type === 'google-search') {
+        messageLink = `https://www.google.com/search?q=${q}`;
+        messageLinkLabel = 'Open Google Search';
+      } else if (safeData.type === 'youtube-search' || safeData.type === 'youtube-play') {
+        messageLink = `https://www.youtube.com/results?search_query=${q}`;
+        messageLinkLabel = 'Open YouTube';
+      } else if (safeData.type === 'calculator-open') {
+        messageLink = 'https://www.google.com/search?q=calculator';
+        messageLinkLabel = 'Open Calculator';
+      } else if (safeData.type === 'instagram-open') {
+        messageLink = 'https://www.instagram.com/';
+        messageLinkLabel = 'Open Instagram';
+      } else if (safeData.type === 'facebook-open') {
+        messageLink = 'https://www.facebook.com/';
+        messageLinkLabel = 'Open Facebook';
+      } else if (safeData.type === 'weather-show') {
+        messageLink = `https://www.google.com/search?q=weather+${q}`;
+        messageLinkLabel = 'Open Weather Report';
+      }
+
+      setMessages(prev => [...prev, { 
+        role: 'ai', 
+        text: safeData.response,
+        link: messageLink,
+        linkLabel: messageLinkLabel
+      }]);
       handleCommand(safeData);
     } catch (err) {
       console.error(err);
@@ -145,6 +229,7 @@ function Home() {
       speak(fallback);
     } finally {
       setIsProcessing(false);
+      isProcessingRef.current = false;
     }
   };
 
@@ -168,21 +253,26 @@ function Home() {
         'guy', 'aria', 'jenny', 'david', 'zira'
       ];
       
-      let engVoices = list.filter(v => {
-        const langOK = v.lang.startsWith('en') || v.lang.startsWith('EN');
-        if (!langOK) return false;
-        const voiceName = v.name.toLowerCase();
-        return preferredKeywords.some(kw => voiceName.includes(kw));
-      });
+      const filtered = list.filter(v => {
+        // Exclude network-based voices to prevent latency, lag, and silent fallback bugs
+        if (v.localService === false) return false;
 
-      if (engVoices.length === 0) {
-        engVoices = list.filter(v => v.lang.startsWith('en') || v.lang.startsWith('EN'));
-      }
+        const isEng = v.lang.startsWith('en') || v.lang.startsWith('EN');
+        const isHi = v.lang.startsWith('hi') || v.lang.startsWith('HI') || v.name.toLowerCase().includes('hindi');
+        const isTe = v.lang.startsWith('te') || v.lang.startsWith('TE') || v.name.toLowerCase().includes('telugu');
+        if (!isEng && !isHi && !isTe) return false;
+        
+        if (isEng) {
+          const voiceName = v.name.toLowerCase();
+          return preferredKeywords.some(kw => voiceName.includes(kw));
+        }
+        return true;
+      });
 
       // De-duplicate by name
       const uniqueVoices = [];
       const seenNames = new Set();
-      for (const v of engVoices) {
+      for (const v of filtered) {
         if (!seenNames.has(v.name)) {
           seenNames.add(v.name);
           uniqueVoices.push(v);
@@ -214,11 +304,32 @@ function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userData]);
 
+  // One-time interaction listener to unlock SpeechSynthesis (TTS) on mobile browsers (iOS Safari/Android Chrome)
+  useEffect(() => {
+    const unlockTTS = () => {
+      try {
+        const silentUtt = new SpeechSynthesisUtterance('a');
+        silentUtt.volume = 0.001;
+        synth.speak(silentUtt);
+      } catch (_) {}
+      window.removeEventListener('click', unlockTTS);
+      window.removeEventListener('touchstart', unlockTTS);
+    };
+    window.addEventListener('click', unlockTTS);
+    window.addEventListener('touchstart', unlockTTS);
+    return () => {
+      window.removeEventListener('click', unlockTTS);
+      window.removeEventListener('touchstart', unlockTTS);
+    };
+  }, [synth]);
+
   useEffect(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return; // graceful fallback — text input still works
     const rec = new SR();
-    rec.continuous = true; rec.lang = 'en-US'; rec.interimResults = true;
+    rec.continuous = true;
+    rec.lang = localStorage.getItem('speechLang') || 'en-IN';
+    rec.interimResults = true;
     recognitionRef.current = rec;
     let mounted = true, interval;
 
@@ -233,28 +344,100 @@ function Home() {
       synth.cancel(); synth.speak(utt);
     }, 600);
 
+    let silenceTimer = null;
+
     rec.onstart  = () => { isRecognizingRef.current = true;  setListening(true);  };
-    rec.onend    = () => { isRecognizingRef.current = false; setListening(false); if (!isSpeakingRef.current && mounted) setTimeout(startRecognition, 1000); };
-    rec.onerror  = () => { isRecognizingRef.current = false; setListening(false); if (!isSpeakingRef.current && mounted) setTimeout(startRecognition, 1000); };
+    rec.onend    = () => { isRecognizingRef.current = false; setListening(false); if (!isSpeakingRef.current && !isProcessingRef.current && mounted) setTimeout(startRecognition, 1000); };
+    rec.onerror  = (event) => {
+      console.error('Speech recognition error:', event.error);
+      isRecognizingRef.current = false;
+      setListening(false);
+      if (!isSpeakingRef.current && !isProcessingRef.current && mounted) setTimeout(startRecognition, 1000);
+    };
 
     rec.onresult = async (e) => {
       if (isProcessing) return;
       const results = Array.from(e.results);
-      const interim = results.filter(r => !r.isFinal).map(r => r[0].transcript).join('');
-      if (interim) setLiveUserText(interim);
+      
+      // Combine all current transcripts
+      const transcript = results.map(r => r[0].transcript).join('').trim();
+      if (transcript) setLiveUserText(transcript);
+
+      // Clear any existing silence timer
+      if (silenceTimer) clearTimeout(silenceTimer);
 
       const last = results[results.length - 1];
-      if (!last.isFinal) return;
-      const transcript = results.filter(r => r.isFinal).map(r => r[0].transcript).join('').trim();
+      if (last.isFinal) {
+        processCommand(transcript);
+        return;
+      }
 
-      // Always process the command when the user finishes speaking
-      processCommand(transcript);
+      // If browser doesn't mark it final, submit after 1.5s of silence
+      silenceTimer = setTimeout(() => {
+        if (transcript && !isProcessing) {
+          processCommand(transcript);
+        }
+      }, 1500);
     };
 
-    interval = setInterval(() => { if (!isRecognizingRef.current && !isSpeakingRef.current && mounted) startRecognition(); }, 10000);
-    return () => { mounted = false; clearInterval(interval); try { rec.stop(); } catch (_) {} };
+    interval = setInterval(() => { if (!isRecognizingRef.current && !isSpeakingRef.current && !isProcessingRef.current && mounted) startRecognition(); }, 10000);
+    return () => {
+      mounted = false;
+      if (silenceTimer) clearTimeout(silenceTimer);
+      clearInterval(interval);
+      try { rec.stop(); } catch (_) {}
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Update recognition language whenever user switches language
+  useEffect(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.lang = speechLang;
+      if (isRecognizingRef.current) {
+        try { recognitionRef.current.stop(); } catch (_) {}
+      } else {
+        startRecognition();
+      }
+    }
+  }, [speechLang]);
+
+  const changeLang = (lang) => {
+    setSpeechLang(lang);
+    localStorage.setItem('speechLang', lang);
+
+    // Speak a silent utterance inside this click handler to ensure TTS remains unlocked on mobile!
+    try {
+      const silentUtt = new SpeechSynthesisUtterance('a');
+      silentUtt.volume = 0.001;
+      synth.speak(silentUtt);
+    } catch (_) {}
+
+    const list = allVoices.current || [];
+    let selectedVoice = null;
+
+    if (lang === 'hi-IN') {
+      // Find Lekha or a Hindi voice
+      selectedVoice = 
+        list.find((v) => v.name.toLowerCase().includes('lekha')) ||
+        list.find((v) => v.lang?.startsWith('hi') || v.lang?.startsWith('HI') || v.name.toLowerCase().includes('hindi'));
+    } else if (lang === 'te-IN') {
+      // Find Geetha or a Telugu voice
+      selectedVoice = 
+        list.find((v) => v.name.toLowerCase().includes('geetha')) ||
+        list.find((v) => v.lang?.startsWith('te') || v.lang?.startsWith('TE') || v.name.toLowerCase().includes('telugu'));
+    } else {
+      // Find Samantha or an English voice
+      selectedVoice = 
+        list.find((v) => v.name.toLowerCase().includes('samantha')) ||
+        list.find((v) => v.lang?.startsWith('en') || v.lang?.startsWith('EN') || v.name.toLowerCase().includes('english'));
+    }
+
+    if (selectedVoice) {
+      setSelectedVoiceName(selectedVoice.name);
+      localStorage.setItem('selectedVoiceName', selectedVoice.name);
+    }
+  };
 
   const active = listening || aiSpeaking;
   const accentColor = aiSpeaking ? '#c084fc' : '#818cf8';
@@ -275,7 +458,7 @@ function Home() {
       <div style={styles.leftPanel}>
 
         {/* ── Sleek Nav bar ── */}
-        <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0, padding: '4px 8px' }}>
+        <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0, padding: '16px 20px' }}>
           
           {/* Back Button */}
           <button 
@@ -283,15 +466,15 @@ function Home() {
             style={{ ...styles.iconBtn, background: 'rgba(255,255,255,0.03)', color: 'rgba(255,255,255,0.6)' }}
             title="Back to Avatar Selection"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
             </svg>
           </button>
 
           {/* Online Indicator */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 12px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: 20, border: '1px solid rgba(99, 102, 241, 0.1)' }}>
-            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#818cf8', boxShadow: '0 0 8px #818cf8', animation: 'glowPulse 2s ease-in-out infinite' }} />
-            <span style={{ fontFamily: 'Orbitron, sans-serif', color: '#818cf8', fontSize: 9, letterSpacing: 2, textTransform: 'uppercase' }}>Online</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 16px', background: 'rgba(99, 102, 241, 0.08)', borderRadius: 20, border: '1px solid rgba(99, 102, 241, 0.15)' }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#818cf8', boxShadow: '0 0 10px #818cf8', animation: 'glowPulse 2s ease-in-out infinite' }} />
+            <span style={{ fontFamily: 'Orbitron, sans-serif', color: '#818cf8', fontSize: 10, letterSpacing: 2, textTransform: 'uppercase' }}>Online</span>
           </div>
 
           {/* Logout Button */}
@@ -300,7 +483,7 @@ function Home() {
             style={{ ...styles.iconBtn, background: 'rgba(248, 113, 113, 0.05)', color: '#f87171', borderColor: 'rgba(248, 113, 113, 0.1)' }}
             title="Logout"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
             </svg>
           </button>
@@ -400,6 +583,34 @@ function Home() {
           <p style={{ color: 'rgba(255,255,255,0.2)', fontSize: 11, textAlign: 'center', lineHeight: 1.5 }}>
             Say <span style={{ color: '#818cf8' }}>"{userData?.assistantName || 'the name'}"</span> or type below
           </p>
+
+          {/* ── Language Selector ── */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, marginTop: 4 }}>
+            <span style={{ fontFamily: 'Orbitron, sans-serif', fontSize: 8, letterSpacing: 2, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase' }}>Speak In</span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {[{ code: 'en-IN', label: 'EN' }, { code: 'hi-IN', label: 'हि' }, { code: 'te-IN', label: 'తె' }].map(({ code, label }) => (
+                <button
+                  key={code}
+                  onClick={() => changeLang(code)}
+                  title={code === 'en-IN' ? 'English' : code === 'hi-IN' ? 'Hindi' : 'Telugu'}
+                  style={{
+                    padding: '5px 12px',
+                    borderRadius: 20,
+                    border: speechLang === code ? '1px solid #818cf8' : '1px solid rgba(255,255,255,0.1)',
+                    background: speechLang === code ? 'rgba(129,140,248,0.2)' : 'rgba(255,255,255,0.03)',
+                    color: speechLang === code ? '#818cf8' : 'rgba(255,255,255,0.35)',
+                    fontSize: 13,
+                    fontWeight: speechLang === code ? 700 : 400,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    lineHeight: 1,
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* ── User pill ── */}
@@ -460,6 +671,37 @@ function Home() {
                   </div>
                 )}
                 {msg.text}
+                {msg.link && (
+                  <div style={{ marginTop: 8 }}>
+                    <a
+                      href={msg.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        padding: '6px 12px',
+                        borderRadius: '8px',
+                        background: 'rgba(255,255,255,0.1)',
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        color: 'white',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        textDecoration: 'none',
+                        transition: 'background 0.2s',
+                        fontFamily: 'sans-serif'
+                      }}
+                      onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.18)'}
+                      onMouseLeave={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
+                    >
+                      {msg.linkLabel || 'Open Link'}
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+                      </svg>
+                    </a>
+                  </div>
+                )}
               </div>
             </div>
           ))}

@@ -1,8 +1,9 @@
 const geminiResponse = require("../gemini");
 const moment = require("moment");
-const User = require("../Models/user.models");
+const User = require("../Models/UserModel");
 const { uploadOnCloudinary } = require("../Config/cloudinary");
 
+// ── Get the currently authenticated user ──
 exports.getCurrentUser = async (req, res) => {
   try {
     const user = await User.findById(req.userId).select("-password");
@@ -13,6 +14,7 @@ exports.getCurrentUser = async (req, res) => {
   }
 };
 
+// ── Update assistant name and/or image ──
 exports.updateAssistant = async (req, res) => {
   try {
     const { assistantName, imageurl } = req.body;
@@ -36,12 +38,17 @@ exports.updateAssistant = async (req, res) => {
 
     return res.status(200).json(user);
   } catch (error) {
-    return res.status(500).json({ message: "UpdateAssistant error" });
+    return res.status(500).json({ message: "Failed to update assistant" });
   }
 };
 
-const handleGeminiCommand = async (command, assistantName, userName, res) => {
-  const result = await geminiResponse(command, assistantName, userName);
+// ── Internal helper: process a command through Gemini and return the response ──
+const handleGeminiCommand = async (command, assistantName, userName, lang, chatHistory, res) => {
+  // Inject current date/time so Gemini can answer time-related queries in the requested language
+  const timeContext = `[Context: Current date is ${moment().format("MMMM Do, YYYY")}, current time is ${moment().format("hh:mm A")}, today is ${moment().format("dddd")}]. `;
+  const commandWithContext = timeContext + command;
+
+  const result = await geminiResponse(commandWithContext, assistantName, userName, lang, chatHistory);
   if (!result) return res.status(500).json({ response: "Assistant failed to respond." });
 
   const jsonMatch = result.match(/{[\s\S]*}/);
@@ -59,13 +66,9 @@ const handleGeminiCommand = async (command, assistantName, userName, res) => {
 
   switch (type) {
     case "get-date":
-      return res.json({ type, userInput, response: `Today's date is ${moment().format("MMMM Do, YYYY")}` });
     case "get-time":
-      return res.json({ type, userInput, response: `Current time is ${moment().format("hh:mm A")}` });
     case "get-day":
-      return res.json({ type, userInput, response: `Today is ${moment().format("dddd")}` });
     case "get-month":
-      return res.json({ type, userInput, response: `Current month is ${moment().format("MMMM")}` });
     case "general":
     case "google-search":
     case "youtube-search":
@@ -74,32 +77,35 @@ const handleGeminiCommand = async (command, assistantName, userName, res) => {
     case "instagram-open":
     case "facebook-open":
     case "weather-show":
-      return res.json({ type, userInput, response: gemResult.response });
+      return res.json({
+        type,
+        userInput,
+        lang,
+        response: gemResult.response,
+        responseRoman: gemResult.responseRoman || gemResult.response,
+      });
     default:
       return res.status(400).json({ response: "Sorry, I couldn't understand that." });
   }
 };
 
+// ── Process a voice or text command from the authenticated user ──
 exports.askToAssistant = async (req, res) => {
   try {
-    const { command } = req.body;
+    const { command, lang, chatHistory } = req.body;
     const user = await User.findById(req.userId);
     user.history.push(command);
     await user.save();
-    await handleGeminiCommand(command, user.assistantName, user.name, res);
+    await handleGeminiCommand(
+      command,
+      user.assistantName,
+      user.name,
+      lang || "en-IN",
+      chatHistory,
+      res
+    );
   } catch (error) {
     console.error("Error in askToAssistant:", error);
-    return res.status(500).json({ response: "Internal server error" });
-  }
-};
-
-// Unprotected demo endpoint (no auth required — useful for quick testing)
-exports.demoChat = async (req, res) => {
-  try {
-    const { command, assistantName, userName } = req.body;
-    if (!command) return res.status(400).json({ response: "No command provided." });
-    await handleGeminiCommand(command, assistantName || "Assistant", userName || "User", res);
-  } catch (error) {
     return res.status(500).json({ response: "Internal server error" });
   }
 };

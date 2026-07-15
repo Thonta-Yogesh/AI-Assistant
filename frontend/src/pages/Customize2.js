@@ -5,9 +5,9 @@ import axios from 'axios';
 import { MdKeyboardBackspace } from 'react-icons/md';
 
 function Customize2() {
-  const { userData, backendImage, SelectedImage, serverUrl, setUserdata } = useContext(userdataContext);
+  const { userData, backendImage, selectedImage, serverUrl, setUserdata } = useContext(userdataContext);
   const navigate = useNavigate();
-  const [assistantName, setAssistantname] = useState(userData?.assistantName || '');
+  const [assistantName, setAssistantName] = useState(userData?.assistantName || '');
   const [loading, setLoading] = useState(false);
 
   const handleUpdateAssistant = async () => {
@@ -16,15 +16,15 @@ function Customize2() {
       const formData = new FormData();
       formData.append('assistantName', assistantName);
       if (backendImage) formData.append('assistantImage', backendImage);
-      else formData.append('imageurl', SelectedImage);
+      else formData.append('imageurl', selectedImage);
 
       const result = await axios.post(`${serverUrl}/api/user/update`, formData, { withCredentials: true });
       setUserdata(result.data);
       setLoading(false);
       navigate('/');
     } catch (error) {
-      console.warn('Backend update failed (bypass mode). Setting locally.');
-      const localImage = backendImage ? URL.createObjectURL(backendImage) : SelectedImage;
+      console.warn('Backend update failed. Applying locally.');
+      const localImage = backendImage ? URL.createObjectURL(backendImage) : selectedImage;
       setUserdata(prev => ({ ...prev, assistantName, assistantImage: localImage }));
       setLoading(false);
       navigate('/');
@@ -38,7 +38,7 @@ function Customize2() {
       <div className="absolute top-[-150px] left-1/2 -translate-x-1/2 w-[600px] h-[400px] rounded-full pointer-events-none"
         style={{ background: 'radial-gradient(ellipse, rgba(168,85,247,0.08) 0%, transparent 70%)' }} />
 
-      {/* Back */}
+      {/* Back button */}
       <button
         onClick={() => navigate('/customize')}
         className="absolute top-6 left-6 flex items-center gap-2 text-white/40 hover:text-indigo-400 transition-colors text-sm"
@@ -48,9 +48,9 @@ function Customize2() {
       </button>
 
       {/* Selected avatar preview */}
-      {(SelectedImage && SelectedImage !== 'input') && (
+      {selectedImage && selectedImage !== 'input' && (
         <div className="w-24 h-36 rounded-2xl overflow-hidden border-2 border-indigo-500/40 shadow-[0_0_24px_rgba(99,102,241,0.4)] mb-6">
-          <img src={SelectedImage} alt="selected" className="w-full h-full object-cover" />
+          <img src={selectedImage} alt="selected avatar" className="w-full h-full object-cover" />
         </div>
       )}
 
@@ -65,13 +65,13 @@ function Customize2() {
         </p>
       </div>
 
-      {/* Input */}
+      {/* Name input */}
       <div className="relative w-full max-w-md">
         <input
           type="text"
           placeholder="e.g. Jarvis, Aria, Nova..."
           value={assistantName}
-          onChange={e => setAssistantname(e.target.value)}
+          onChange={e => setAssistantName(e.target.value)}
           className="w-full h-14 px-6 rounded-2xl text-white text-base placeholder-white/20
             bg-white/5 border border-white/10 outline-none transition-all duration-300
             focus:border-indigo-500/60 focus:bg-white/8 focus:shadow-[0_0_20px_rgba(99,102,241,0.2)]"

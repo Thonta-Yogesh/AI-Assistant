@@ -3,7 +3,7 @@ require("dotenv").config();
 const express = require("express");
 const connectdb = require("./Config/db.js");
 const authRoutes = require("./Routes/AuthRoutes");
-const userRoutes = require("./Routes/User.Routes");
+const userRoutes = require("./Routes/UserRoutes");
 const cookieParser = require("cookie-parser");
 const cors = require("cors");
 

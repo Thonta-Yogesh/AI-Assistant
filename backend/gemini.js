@@ -1,54 +1,68 @@
 const axios = require("axios");
 
-const geminiResponse = async (command, assistantName, userName) => {
+const geminiResponse = async (command, assistantName, userName, lang = 'en-IN', chatHistory = []) => {
   try {
-    let apiUrl = process.env.GEMINI_API_URL;
-    if (apiUrl) {
-      apiUrl = apiUrl.replace("gemini-1.5-flash", "gemini-3.1-flash-lite")
-                     .replace("gemini-flash-latest", "gemini-3.1-flash-lite");
+    const apiUrl = process.env.GEMINI_API_URL;
+    if (!apiUrl) { console.error("❌ GEMINI_API_URL not set"); return null; }
+
+    const LANG_INSTRUCTIONS = {
+      'hi-IN': `The user is speaking in HINDI. You MUST:
+- Write your "response" ONLY in Hindi Devanagari script (हिंदी लिपि)
+- Write a Romanized transliteration of the Hindi response in "responseRoman" (using English letters, e.g. "Main bilkul thik hoon, aap kaise hain?").
+- Set "lang": "hi-IN"`,
+      'te-IN': `The user is speaking in TELUGU. You MUST:
+- Write your "response" ONLY in Telugu script (తెలుగు లిపి)
+- Write a Romanized transliteration of the Telugu response in "responseRoman" (using English letters, e.g. "Nenu chala bagunnanu, meeru ela unnarru?").
+- Set "lang": "te-IN"`,
+      'en-IN': `The user is speaking in ENGLISH. Respond in clear English.
+- Write the exact same English response in both "response" and "responseRoman".
+- Set "lang": "en-IN"`,
+    };
+
+    const langInstruction = LANG_INSTRUCTIONS[lang] || LANG_INSTRUCTIONS['en-IN'];
+
+    let historyText = "";
+    if (chatHistory && chatHistory.length > 0) {
+      historyText = "\nRecent Conversation History (for context):\n" + chatHistory.map(m => {
+        const sender = m.role === 'user' ? 'User' : 'Assistant';
+        return `${sender}: ${m.text}`;
+      }).join('\n') + "\n";
     }
 
     const prompt = `You are a virtual assistant named ${assistantName} created by ${userName}.
-You are not Google. You will now behave like a voice-enabled assistant.
 
-Your task is to understand the user's natural language input and respond with a JSON object like this:
+LANGUAGE INSTRUCTION (MANDATORY — HIGHEST PRIORITY):
+${langInstruction}
 
+Your task: understand the user's input and return a JSON object:
 {
   "type": "general" | "google-search" | "youtube-search" | "youtube-play" |
           "get-time" | "get-date" | "get-day" | "get-month" | "calculator-open" |
           "instagram-open" | "facebook-open" | "weather-show",
-  "userInput": "<original user input> {only remove your name from userinput if exists}",
-  "response": "<a short spoken response to read out loud to the user>"
+  "userInput": "<user's input without assistant name>",
+  "response": "<your response in the REQUIRED language script above>",
+  "responseRoman": "<a Romanized/transliterated version using English alphabet so English voice engines can pronounce it>",
+  "lang": "${lang}"
 }
 
-Instructions:
-- "type": determine the intent of the user.
-- "userInput": original sentence the user spoke (without assistant name).
-- "response": A short voice-friendly reply, e.g., "Sure, playing it now", "Here's what I found", etc.
-
 Type meanings:
-- "general": if it's a factual or informational question.
-aur agar koi aisa questions puchta hai jiska answer tume pata hai usko bhi general ki cateogry me rakho bas short answers dena
+- "general": factual/conversational — give the ACTUAL answer, not just "Sure".
+- "google-search": user wants to Google something.
+- "youtube-search" / "youtube-play": user wants YouTube.
+- "calculator-open": open calculator.
+- "instagram-open" / "facebook-open": open social media.
+- "weather-show": weather — give climate knowledge + say opening live data.
+- "get-time" / "get-date" / "get-day" / "get-month": date/time.
 
-- "google-search": if user wants to search something on Google.
-- "youtube-search": if user wants to search something on YouTube.
-- "youtube-play": if user wants to directly play a video or song.
-- "calculator-open": if user wants to open a calculator.
-- "instagram-open": if user wants to open Instagram.
-- "facebook-open": if user wants to open Facebook.
-- "weather-show": if user wants to know weather.
-- "get-time": if user asks for current time.
-- "get-date": if user asks for today's date.
-
-
-
-Important:
-- If someone asks who created you, include ${userName} in the response.
-- You must strictly output only the valid JSON object without any explanation, markdown, or formatting.
-- Do not include anything before or after the JSON object.
-
+Rules:
+- If asked who created you, include ${userName} in the response (in the required script).
+- Output ONLY the JSON object. No markdown, no backticks, no extra text.
+- CRITICAL: Read "Recent Conversation History" to maintain the flow of ongoing games, Q&A sessions, quizzes, or step-by-step questions. If the user previously asked you to do something sequential (like "ask me 10 questions"), follow up on their answer to the previous question and then output the next question in the sequence. Never ignore or break a flow that has already started.
+${historyText}
 User input: ${command}
 `;
+
+
 
     const result = await axios.post(apiUrl, {
       contents: [

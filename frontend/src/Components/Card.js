@@ -2,12 +2,16 @@ import React, { useContext } from 'react';
 import { userdataContext } from '../Contexts/UserContext';
 
 function Card({ image }) {
-  const { SelectedImage, SetselectedImage, setFrontendImage, setbackendImage } = useContext(userdataContext);
-  const isSelected = SelectedImage === image;
+  const { selectedImage, setSelectedImage, setFrontendImage, setBackendImage } = useContext(userdataContext);
+  const isSelected = selectedImage === image;
 
   return (
     <div
-      onClick={() => { SetselectedImage(image); setFrontendImage(null); setbackendImage(null); }}
+      onClick={() => {
+        setSelectedImage(image);
+        setFrontendImage(null);
+        setBackendImage(null);
+      }}
       className={`relative w-[80px] h-[130px] lg:w-[130px] lg:h-[210px] rounded-2xl overflow-hidden cursor-pointer
         border-2 transition-all duration-300 group
         ${isSelected
@@ -17,7 +21,7 @@ function Card({ image }) {
     >
       <img src={image} alt="assistant avatar" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
 
-      {/* Overlay on hover */}
+      {/* Gradient overlay on hover */}
       <div className={`absolute inset-0 transition-opacity duration-300 ${
         isSelected ? 'opacity-30' : 'opacity-0 group-hover:opacity-20'
       } bg-gradient-to-b from-indigo-500 to-transparent`} />
