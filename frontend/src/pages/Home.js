@@ -78,6 +78,13 @@ function Home() {
   const chatEndRef       = useRef(null);
   const synth            = window.speechSynthesis;
 
+  const speechLangRef    = useRef(speechLang);
+  const messagesRef      = useRef(messages);
+  const silenceTimerRef  = useRef(null);
+
+  useEffect(() => { speechLangRef.current = speechLang; }, [speechLang]);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
+
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, liveUserText]);
 
   const handleLogout = async () => {
@@ -180,19 +187,33 @@ function Home() {
 
   // ── Shared command processor used by both voice AND text input ──
   const processCommand = async (transcript) => {
-    if (!transcript?.trim() || isProcessing) return;
+    if (!transcript?.trim() || isProcessingRef.current) return;
     setIsProcessing(true);
     isProcessingRef.current = true;
     setLiveUserText('');
-    setMessages(prev => [...prev, { role: 'user', text: transcript }]);
+
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+
+    const userMsg = { role: 'user', text: transcript };
+    setMessages(prev => [...prev, userMsg]);
+
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch (_) {}
       isRecognizingRef.current = false;
       setListening(false);
     }
     try {
-      const currentHistory = [...messages, { role: 'user', text: transcript }];
-      const data = await getGeminiResponse(transcript, userData?.assistantName, userData?.name, speechLang, currentHistory);
+      const currentHistory = [...messagesRef.current, userMsg];
+      const data = await getGeminiResponse(
+        transcript,
+        userData?.assistantName,
+        userData?.name,
+        speechLangRef.current,
+        currentHistory
+      );
       const safeData = data && data.response
         ? data
         : { type: 'general', userInput: transcript, response: 'Sorry, something went wrong. Please try again.', responseRoman: 'Sorry, something went wrong. Please try again.' };
@@ -351,7 +372,7 @@ function Home() {
       synth.cancel(); synth.speak(utt);
     }, 600);
 
-    let silenceTimer = null;
+
 
     rec.onstart  = () => { isRecognizingRef.current = true;  setListening(true);  };
     rec.onend    = () => { isRecognizingRef.current = false; setListening(false); if (!isSpeakingRef.current && !isProcessingRef.current && mounted) setTimeout(startRecognition, 1000); };
@@ -375,7 +396,7 @@ function Home() {
     };
 
     rec.onresult = async (e) => {
-      if (isProcessing) return;
+      if (isProcessingRef.current) return;
       const results = Array.from(e.results);
       
       // Combine all current transcripts
@@ -383,7 +404,7 @@ function Home() {
       if (transcript) setLiveUserText(transcript);
 
       // Clear any existing silence timer
-      if (silenceTimer) clearTimeout(silenceTimer);
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
 
       const last = results[results.length - 1];
       if (last.isFinal) {
@@ -392,8 +413,8 @@ function Home() {
       }
 
       // If browser doesn't mark it final, submit after 1.5s of silence
-      silenceTimer = setTimeout(() => {
-        if (transcript && !isProcessing) {
+      silenceTimerRef.current = setTimeout(() => {
+        if (transcript && !isProcessingRef.current) {
           processCommand(transcript);
         }
       }, 1500);
@@ -402,7 +423,10 @@ function Home() {
     interval = setInterval(() => { if (!isRecognizingRef.current && !isSpeakingRef.current && !isProcessingRef.current && mounted) startRecognition(); }, 10000);
     return () => {
       mounted = false;
-      if (silenceTimer) clearTimeout(silenceTimer);
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
       clearInterval(interval);
       try { rec.stop(); } catch (_) {}
     };
