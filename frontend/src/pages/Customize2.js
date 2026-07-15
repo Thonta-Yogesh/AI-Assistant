@@ -13,12 +13,18 @@ function Customize2() {
   const handleUpdateAssistant = async () => {
     setLoading(true);
     try {
+      const token = localStorage.getItem('token');
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
       const formData = new FormData();
       formData.append('assistantName', assistantName);
       if (backendImage) formData.append('assistantImage', backendImage);
       else formData.append('imageurl', selectedImage);
 
-      const result = await axios.post(`${serverUrl}/api/user/update`, formData, { withCredentials: true });
+      const result = await axios.post(`${serverUrl}/api/user/update`, formData, {
+        withCredentials: true,
+        headers,
+      });
       setUserdata(result.data);
       setLoading(false);
       navigate('/');

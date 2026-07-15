@@ -81,7 +81,14 @@ function Home() {
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, liveUserText]);
 
   const handleLogout = async () => {
-    try { await axios.get(`${serverUrl}/api/auth/logout`, { withCredentials: true }); } catch (_) {}
+    try {
+      const token = localStorage.getItem('token');
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      await axios.get(`${serverUrl}/api/auth/logout`, {
+        withCredentials: true,
+        headers,
+      });
+    } catch (_) {}
     setUserdata(null);
     navigate('/signin');
   };
@@ -352,7 +359,19 @@ function Home() {
       console.error('Speech recognition error:', event.error);
       isRecognizingRef.current = false;
       setListening(false);
-      if (!isSpeakingRef.current && !isProcessingRef.current && mounted) setTimeout(startRecognition, 1000);
+
+      if (event.error === 'language-not-supported') {
+        console.warn(`Language ${rec.lang} is not supported. Falling back to en-IN.`);
+        rec.lang = 'en-IN';
+      }
+
+      if (event.error === 'not-allowed') {
+        return; // Don't auto-restart if permission is denied
+      }
+
+      if (!isSpeakingRef.current && !isProcessingRef.current && mounted) {
+        setTimeout(startRecognition, 1000);
+      }
     };
 
     rec.onresult = async (e) => {

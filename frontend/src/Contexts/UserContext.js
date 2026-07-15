@@ -50,10 +50,11 @@ function UserContext({ children }) {
     }
   }, [userData, loadingUser]);
 
-  // ── Send a command to Gemini via the backend ──
   const getGeminiResponse = useCallback(
     async (command, assistantName, userName, lang = 'en-IN', chatHistory = []) => {
       try {
+        const token = localStorage.getItem('token');
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
         const result = await axios.post(
           `${serverUrl}/api/user/asktoassistant`,
           {
@@ -63,15 +64,19 @@ function UserContext({ children }) {
             lang,
             chatHistory: chatHistory.slice(-10), // limit history to last 10 turns
           },
-          { withCredentials: true }
+          {
+            withCredentials: true,
+            headers,
+          }
         );
         return result.data;
       } catch (error) {
         console.error('Gemini request failed:', error);
+        const errMsg = error?.response?.data?.response || 'Sorry, I could not connect to the server. Please try again.';
         return {
           type: 'general',
           userInput: command,
-          response: 'Sorry, I could not connect to the server. Please try again.',
+          response: errMsg,
         };
       }
     },
