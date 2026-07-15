@@ -2,8 +2,13 @@ const axios = require("axios");
 
 const geminiResponse = async (command, assistantName, userName, lang = 'en-IN', chatHistory = []) => {
   try {
-    const apiUrl = process.env.GEMINI_API_URL;
+    let apiUrl = process.env.GEMINI_API_URL;
     if (!apiUrl) { console.error("❌ GEMINI_API_URL not set"); return null; }
+
+    // Hotfix: Automatically replace outdated gemini-1.5-flash with working gemini-3.1-flash-lite model
+    if (apiUrl.includes("models/gemini-1.5-flash")) {
+      apiUrl = apiUrl.replace("models/gemini-1.5-flash", "models/gemini-3.1-flash-lite");
+    }
 
     const LANG_INSTRUCTIONS = {
       'hi-IN': `The user is speaking in HINDI. You MUST:
