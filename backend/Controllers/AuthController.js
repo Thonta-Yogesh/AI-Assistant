@@ -73,3 +73,34 @@ exports.logout = async (req, res) => {
     return res.status(500).json({ message: `Logout error: ${error}` });
   }
 };
+
+exports.debugEnv = async (req, res) => {
+  try {
+    const mongoUrlPresent = !!process.env.MONGODB_URL;
+    const geminiUrl = process.env.GEMINI_API_URL || "";
+    
+    // Mask key in geminiUrl
+    let maskedGeminiUrl = "";
+    if (geminiUrl) {
+      const parts = geminiUrl.split("key=");
+      if (parts.length > 1) {
+        maskedGeminiUrl = parts[0] + "key=***" + parts[1].substring(0, 5) + "..."; 
+      } else {
+        maskedGeminiUrl = geminiUrl;
+      }
+    }
+
+    const jwtSecretPresent = !!process.env.JWT_SECRET;
+    
+    return res.status(200).json({
+      mongoUrlPresent,
+      mongoUrlValueLength: process.env.MONGODB_URL ? process.env.MONGODB_URL.length : 0,
+      geminiUrlPresent: !!geminiUrl,
+      maskedGeminiUrl,
+      jwtSecretPresent,
+      nodeEnv: process.env.NODE_ENV
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+};
