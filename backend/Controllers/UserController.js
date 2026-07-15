@@ -62,7 +62,10 @@ const handleGeminiCommand = async (command, assistantName, userName, lang, chatH
   }
 
   let { type, userInput } = gemResult;
-  type = type.replace(/_/g, "-");
+  if (!type) {
+    return res.status(400).json({ response: "Sorry, I couldn't understand that." });
+  }
+  type = String(type).replace(/_/g, "-");
 
   switch (type) {
     case "get-date":
